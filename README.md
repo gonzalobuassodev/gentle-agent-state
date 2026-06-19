@@ -1,92 +1,124 @@
 # tmux-agent-state
 
-Surface your AI coding agents' state — **working**, **blocked**, **idle** — directly
-into tmux: a per-tab dot, a silent self-healing heartbeat, and an audible + visual
-alert when an agent needs you or finishes a task you weren't watching.
+**Know which AI agent needs you — without leaving your tab bar.**
 
-Works with **opencode**, **pi**, **Claude Code**, and **Codex**. One canonical
-vocabulary, one core, opt-in per agent.
-
-```
- ● 1 editor    ● 2 claude    3 notes        ← orange dot = working, red dot = blocked
-```
-
-## Why
-
-When you run agents across several tmux windows, you lose track of which one is
-churning, which one is stuck waiting on a permission prompt, and which one finished
-ten minutes ago. This puts that state where your eyes already are — the tab bar —
-and beeps only for the agents you're **not** currently looking at.
-
-## How it works
-
-Every agent speaks a different event dialect. Instead of teaching tmux about each
-one, each agent gets a thin **adapter** that normalizes its native events into a
-single canonical vocabulary and calls one core script:
+Run agents across tmux windows and a colored dot tells you each one's state at a
+glance. A sound fires only when an agent you're **not** watching gets blocked or
+finishes. No more cycling through panes to check who's stuck.
 
 ```
-opencode / pi / claude / codex  →  agent-report.sh  →  tmux (dot + rollup + alert)
+  ● 1 api      ● 2 claude      3 notes
+  └ working    └ blocked       └ idle
+  (orange)     (red, beeps)    (no dot)
 ```
 
-tmux only ever sees the core — it never knows which agent ran. Add a new agent by
-writing one adapter; nothing else changes. (This is an anti-corruption layer.)
+Works with **opencode**, **pi**, **Claude Code**, and **Codex** — one shared core,
+each agent opt-in.
 
-- **`agent-report.sh`** — the core. Maps a canonical state onto the pane, rolls the
-  worst state up to the window (`blocked > working > idle`), and alerts only on a
-  real transition into an attention state while the pane is **off-screen**.
-- **`agent-status.sh`** — a silent heartbeat in `status-right`. Self-heals a stuck
-  `blocked` once you're actually looking at that pane (no event fires when a prompt
-  is cancelled, so the state would otherwise stick).
-- **`agents.conf`** — the display layer: per-tab dot, status interval, visual bell.
+---
 
-## Install
+## Quick path
 
 ```sh
-git clone https://github.com/<you>/tmux-agent-state.git
+git clone https://github.com/Gentleman-Programming/tmux-agent-state.git
 cd tmux-agent-state
+./install.sh --all          # core + every agent you have installed
+```
 
-./install.sh --all          # core + every adapter whose tool is detected
-# or pick exactly what you use:
+Then open a fresh tmux (or `tmux source-file ~/.config/tmux/tmux.conf`) and restart
+your agents. That's it.
+
+Want only some agents? Pick them explicitly:
+
+```sh
 ./install.sh --with-opencode --with-claude
 ```
 
-| Flag | Installs |
-|------|----------|
-| *(none)* | tmux core only (display + scripts) |
-| `--with-opencode` | `~/.config/opencode/plugins/tmux-agent-state.js` |
-| `--with-pi` | `~/.pi/agent/extensions/tmux-agent-state.ts` |
-| `--with-claude` | merges hooks into `~/.claude/settings.json` |
-| `--with-codex` | merges hooks into `~/.codex/hooks.json` |
-| `--all` | every adapter whose tool dir exists |
+---
 
-Adapters are **opt-in** — the installer never touches the config of a tool you
-didn't ask for. The Claude/Codex hook merge is idempotent and append-only: it adds
-our hook without clobbering any hooks you already have.
+## What the dots mean
 
-The installer also appends a single `source-file` line to your tmux config
-(`~/.config/tmux/tmux.conf` or `~/.tmux.conf`) so `agents.conf` loads **last** —
-after your theme — letting the per-tab dot extend the theme's format instead of
-overwriting it.
+| Dot | State | Meaning | Alert when off-screen |
+|-----|-------|---------|------------------------|
+| 🟠 orange | `working` | agent is churning | — |
+| 🔴 red | `blocked` | waiting on YOU (permission / question) | sound + flash |
+| *(none)* | `idle` | done, or not running | sound on finish |
 
-Then open a fresh tmux (or `tmux source-file ~/.config/tmux/tmux.conf`) and restart
-your agents.
+The window dot always shows its **worst** pane: `blocked > working > idle`. You only
+get alerted on a real state change, and never for the pane you're already looking at.
 
-### Requirements
+---
 
-`tmux`, `jq`, `python3`, `bash`. (`jq` + `python3` power the Claude/Codex hook
-adapters.) Sound is best-effort and optional — macOS uses `afplay`; Linux falls
-back to `paplay` / `canberra-gtk-play` / `aplay` if present.
+## Supported agents
+
+| Agent | Flag | Where it installs |
+|-------|------|-------------------|
+| opencode | `--with-opencode` | `~/.config/opencode/plugins/` |
+| pi | `--with-pi` | `~/.pi/agent/extensions/` |
+| Claude Code | `--with-claude` | merges hooks into `~/.claude/settings.json` |
+| Codex | `--with-codex` | merges hooks into `~/.codex/hooks.json` |
+| *all detected* | `--all` | every agent whose config dir exists |
+
+**Adapters are opt-in.** The installer never touches a tool you didn't ask for. The
+Claude/Codex hook merge is append-only and idempotent — it adds one hook without
+clobbering anything you already configured.
+
+---
+
+## How it works
+
+Every agent emits a different event dialect. Instead of teaching tmux about each one,
+each agent gets a thin **adapter** that normalizes its native events into a single
+canonical vocabulary — `working` / `blocked` / `idle` — and calls one core script:
+
+```
+opencode ┐
+pi       ├──▶  agent-report.sh  ──▶  tmux (per-tab dot · rollup · alert)
+claude   │
+codex    ┘
+```
+
+tmux only ever sees the core — it never knows which agent ran. Add a new agent by
+writing one adapter; nothing downstream changes. (This is an anti-corruption layer.)
+
+<details>
+<summary>The three core pieces</summary>
+
+- **`agent-report.sh`** — the normalization core. Maps a canonical state onto the
+  pane, rolls the worst state up to the window, and alerts only on a transition into
+  an attention state while the pane is off-screen.
+- **`agent-status.sh`** — a silent heartbeat in `status-right`. Self-heals a stuck
+  `blocked` once you're actually viewing that pane (no event fires when a prompt is
+  cancelled, so the state would otherwise stick forever).
+- **`agents.conf`** — the display layer: per-tab dot, status interval, visual bell.
+  Sourced **last** so it extends your theme's tab format instead of overwriting it.
+
+</details>
+
+---
 
 ## Configuration
 
-| Env var | Default (macOS / Linux) | Meaning |
-|---------|-------------------------|---------|
-| `AGENT_SOUND_BLOCKED` | `Funk.aiff` / `dialog-warning.oga` | played when an agent gets blocked |
-| `AGENT_SOUND_IDLE` | `Glass.aiff` / `complete.oga` | played when a busy agent goes idle |
-| `HERDR_ENV=1` | — | disables all adapters (lets [herdr] own the integration) |
+| Env var | Default (macOS / Linux) | Effect |
+|---------|-------------------------|--------|
+| `AGENT_SOUND_BLOCKED` | `Funk.aiff` / `dialog-warning.oga` | sound when an agent gets blocked |
+| `AGENT_SOUND_IDLE` | `Glass.aiff` / `complete.oga` | sound when a busy agent finishes |
+| `HERDR_ENV=1` | — | disables every adapter |
 
-The dot colors in `agents.conf` use the kanagawa palette
-(`#e82424` blocked, `#dca561` working). Using another theme? Edit the hex values.
+Dot colors live in `agents.conf` (kanagawa palette: `#e82424` blocked, `#dca561`
+working). Using another theme? Edit the hex values.
+
+---
+
+## Requirements
+
+`tmux` · `jq` · `python3` · `bash`
+
+Sound is **best-effort and optional**: macOS uses `afplay`; Linux falls back to
+`paplay` → `canberra-gtk-play` → `aplay`, whichever exists. No player, no sound —
+nothing breaks.
+
+---
 
 ## Uninstall
 
@@ -95,7 +127,9 @@ The dot colors in `agents.conf` use the kanagawa palette
 ```
 
 Removes the core, the source line, and the opencode/pi adapter files. Claude/Codex
-hooks are stripped **by name** — anything else you configured stays.
+hooks are stripped **by name** — anything else you configured stays untouched.
+
+---
 
 ## License
 
