@@ -82,16 +82,24 @@ tmux only ever sees the core — it never knows which agent ran. Add a new agent
 writing one adapter; nothing downstream changes. (This is an anti-corruption layer.)
 
 <details>
-<summary>The three core pieces</summary>
+<summary>The core pieces</summary>
 
 - **`agent-report.sh`** — the normalization core. Maps a canonical state onto the
   pane, rolls the worst state up to the window, and alerts only on a transition into
   an attention state while the pane is off-screen.
-- **`agent-status.sh`** — a silent heartbeat in `status-right`. Self-heals a stuck
-  `blocked` once you're actually viewing that pane (no event fires when a prompt is
-  cancelled, so the state would otherwise stick forever).
-- **`agents.conf`** — the display layer: per-tab dot, status interval, visual bell.
-  Sourced **last** so it extends your theme's tab format instead of overwriting it.
+- **`agent-status.sh`** — the self-heal. Clears a stuck `blocked` on every pane of
+  the window you're viewing (a window's panes are all on-screen, so a blocked
+  background pane gets healed too). No event fires when a prompt is cancelled, so the
+  state would otherwise stick forever. It runs both as a silent `status-right`
+  heartbeat AND on tmux navigation hooks (`after-select-window`, `after-select-pane`,
+  `pane-focus-in`, `client-session-changed`) so it fires the instant you go look —
+  even if your theme clobbers `status-right`.
+- **`agent-statusline.sh`** — idempotently prepends the heartbeat to `status-right`,
+  re-applied on `client-attached` because TPM themes set `status-right`
+  asynchronously and would otherwise clobber the prepend.
+- **`agents.conf`** — the display layer: per-tab dot, status interval, navigation
+  hooks, visual bell. Sourced **last** so it extends your theme's tab format instead
+  of overwriting it.
 
 </details>
 
