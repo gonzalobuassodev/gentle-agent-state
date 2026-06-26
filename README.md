@@ -1,130 +1,219 @@
-# tmux-agent-state
+# gentle-agent-state
 
-**Know which AI agent needs you — without leaving your tab bar.**
+**See when an AI agent needs you without hunting through panes.**
 
-Run agents across tmux windows and a colored dot tells you each one's state at a
-glance. A sound fires only when an agent you're **not** watching gets blocked or
-finishes. No more cycling through panes to check who's stuck.
+gentle-agent-state connects AI coding agents to your terminal multiplexer. Agents
+emit lifecycle events, this project normalizes them into `working`, `blocked`, and
+`idle`, then shows the state in **tmux** or **Zellij**.
 
-```
+- **tmux:** colored dots in the window/tab bar, rolled up from all panes.
+- **Zellij:** the agent pane title changes while the agent is busy or blocked.
+- **Agents:** opencode, pi, Claude Code, and Codex.
+
+```text
   ● 1 api      ● 2 claude      3 notes
   └ working    └ blocked       └ idle
   (orange)     (red, beeps)    (no dot)
 ```
-
-Works with **opencode**, **pi**, **Claude Code**, and **Codex** — one shared core,
-each agent opt-in.
 
 ---
 
 ## Quick path
 
 ```sh
-git clone https://github.com/Gentleman-Programming/tmux-agent-state.git
-cd tmux-agent-state
-./install.sh --all          # core + every agent you have installed
+git clone https://github.com/Gentleman-Programming/gentle-agent-state.git
+cd gentle-agent-state
+./install.sh --all
 ```
 
-Then open a fresh tmux (or `tmux source-file ~/.config/tmux/tmux.conf`) and restart
-your agents. That's it.
+Then restart your agents inside tmux or Zellij.
 
-Want only some agents? Pick them explicitly:
+For tmux, either open a fresh tmux session or reload your config:
 
 ```sh
-./install.sh --with-opencode --with-claude
+tmux source-file ~/.config/tmux/tmux.conf
+```
+
+Want only specific agents?
+
+```sh
+./install.sh --with-opencode --with-pi
+./install.sh --with-claude --with-codex
 ```
 
 ---
 
-## What the dots mean
+## What you get
 
-| Dot | State | Meaning | Alert when off-screen |
-|-----|-------|---------|------------------------|
-| 🟠 orange | `working` | agent is churning | — |
-| 🔴 red | `blocked` | waiting on YOU (permission / question) | sound + flash |
-| *(none)* | `idle` | done, or not running | sound on finish |
+| State | Meaning | tmux display | Zellij display | Alert |
+|-------|---------|--------------|----------------|-------|
+| `working` | Agent is running | 🟠 orange dot | pane title: `● agent working` | none |
+| `blocked` | Agent is waiting for you | 🔴 red dot | pane title: `● agent blocked` | sound + flash/message |
+| `idle` | Agent finished or is not running | no dot | original pane title restored | sound after busy state |
 
-The window dot always shows its **worst** pane: `blocked > working > idle`. You only
-get alerted on a real state change, and never for the pane you're already looking at.
+### tmux behavior
+
+The window dot shows the **worst state across panes**:
+
+```text
+blocked > working > idle
+```
+
+So if any pane in a tmux window is blocked, that window turns red.
+
+### Zellij behavior
+
+Zellij does not expose tmux-style window user options, so the first supported UI is
+pane-title based. The agent pane is renamed while active and restored on idle.
 
 ---
 
 ## Supported agents
 
-| Agent | Flag | Where it installs |
-|-------|------|-------------------|
-| opencode | `--with-opencode` | `~/.config/opencode/plugins/` |
-| pi | `--with-pi` | `~/.pi/agent/extensions/` |
+| Agent | Install flag | Install target |
+|-------|--------------|----------------|
+| opencode | `--with-opencode` | `~/.config/opencode/plugins/gentle-agent-state.js` |
+| pi | `--with-pi` | `~/.pi/agent/extensions/gentle-agent-state.ts` |
 | Claude Code | `--with-claude` | merges hooks into `~/.claude/settings.json` |
 | Codex | `--with-codex` | merges hooks into `~/.codex/hooks.json` |
-| *all detected* | `--all` | every agent whose config dir exists |
+| all detected | `--all` | every detected agent config directory |
 
-**Adapters are opt-in.** The installer never touches a tool you didn't ask for. The
-Claude/Codex hook merge is append-only and idempotent — it adds one hook without
-clobbering anything you already configured.
+Adapters are **opt-in**. The installer only touches agents you request, except
+`--all`, which selects agents whose config directories already exist.
 
----
-
-## How it works
-
-Every agent emits a different event dialect. Instead of teaching tmux about each one,
-each agent gets a thin **adapter** that normalizes its native events into a single
-canonical vocabulary — `working` / `blocked` / `idle` — and calls one core script:
-
-```
-opencode ┐
-pi       ├──▶  agent-report.sh  ──▶  tmux (per-tab dot · rollup · alert)
-claude   │
-codex    ┘
-```
-
-tmux only ever sees the core — it never knows which agent ran. Add a new agent by
-writing one adapter; nothing downstream changes. (This is an anti-corruption layer.)
-
-<details>
-<summary>The core pieces</summary>
-
-- **`agent-report.sh`** — the normalization core. Maps a canonical state onto the
-  pane, rolls the worst state up to the window, and alerts only on a transition into
-  an attention state while the pane is off-screen.
-- **`agent-status.sh`** — the self-heal. Clears a stuck `blocked` on every pane of
-  the window you're viewing (a window's panes are all on-screen, so a blocked
-  background pane gets healed too). No event fires when a prompt is cancelled, so the
-  state would otherwise stick forever. It runs both as a silent `status-right`
-  heartbeat AND on tmux navigation hooks (`after-select-window`, `after-select-pane`,
-  `pane-focus-in`, `client-session-changed`) so it fires the instant you go look —
-  even if your theme clobbers `status-right`.
-- **`agent-statusline.sh`** — idempotently prepends the heartbeat to `status-right`,
-  re-applied on `client-attached` because TPM themes set `status-right`
-  asynchronously and would otherwise clobber the prepend.
-- **`agents.conf`** — the display layer: per-tab dot, status interval, navigation
-  hooks, visual bell. Sourced **last** so it extends your theme's tab format instead
-  of overwriting it.
-
-</details>
-
----
-
-## Configuration
-
-| Env var | Default (macOS / Linux) | Effect |
-|---------|-------------------------|--------|
-| `AGENT_SOUND_BLOCKED` | `Funk.aiff` / `dialog-warning.oga` | sound when an agent gets blocked |
-| `AGENT_SOUND_IDLE` | `Glass.aiff` / `complete.oga` | sound when a busy agent finishes |
-| `HERDR_ENV=1` | — | disables every adapter |
-
-Dot colors live in `agents.conf` (kanagawa palette: `#e82424` blocked, `#dca561`
-working). Using another theme? Edit the hex values.
+Claude/Codex hook merging is append-only and idempotent. Existing hooks are kept.
+Legacy `tmux-agent-state` hook commands are migrated to the neutral
+`gentle-agent-state` core path.
 
 ---
 
 ## Requirements
 
-`tmux` · `jq` · `python3` · `bash`
+Required:
 
-Sound is **best-effort and optional**: macOS uses `afplay`; Linux falls back to
-`paplay` → `canberra-gtk-play` → `aplay`, whichever exists. No player, no sound —
-nothing breaks.
+- `bash`
+- `jq`
+- `python3`
+- either `tmux` or `zellij`
+
+Optional sound players:
+
+- macOS: `afplay`
+- Linux/BSD: `paplay`, `canberra-gtk-play`, or `aplay`
+
+No sound player? Nothing breaks; alerts just become visual/state-only.
+
+---
+
+## Configuration
+
+| Env var | Default | Effect |
+|---------|---------|--------|
+| `AGENT_SOUND_BLOCKED` | macOS `Funk.aiff`, Linux `dialog-warning.oga` | sound when an agent becomes blocked |
+| `AGENT_SOUND_IDLE` | macOS `Glass.aiff`, Linux `complete.oga` | sound when a busy agent finishes |
+| `HERDR_ENV=1` | unset | disables every adapter so Herdr can own integration |
+
+### tmux colors
+
+tmux dot colors live in `tmux/agents.conf`:
+
+| State | Color |
+|-------|-------|
+| blocked | `#e82424` |
+| working | `#dca561` |
+
+Edit those values if your theme needs different colors.
+
+---
+
+## How it works
+
+Every agent has its own event dialect. gentle-agent-state keeps that complexity at
+the edge with thin adapters:
+
+```text
+opencode ┐
+pi       ├──▶  agent-report.sh  ──▶  tmux backend
+Claude   │                       └─▶  Zellij backend
+Codex    ┘
+```
+
+The core vocabulary is deliberately small:
+
+| Canonical state | Example source event |
+|-----------------|----------------------|
+| `working` | prompt submitted, tool started, session active |
+| `blocked` | permission request, user question, approval needed |
+| `idle` | stop, turn complete, session idle |
+
+This is an anti-corruption layer: adding a new agent should require one adapter,
+not changes to every multiplexer backend.
+
+### Installed core files
+
+| Path | Purpose |
+|------|---------|
+| `~/.config/agent-state/scripts/agent-report.sh` | neutral dispatcher |
+| `~/.config/agent-state/scripts/tmux-agent-report.sh` | tmux backend |
+| `~/.config/agent-state/scripts/zellij-agent-report.sh` | Zellij backend |
+| `~/.config/agent-state/scripts/hook-adapter.sh` | Claude/Codex hook adapter |
+
+### tmux-specific files
+
+| Path | Purpose |
+|------|---------|
+| `~/.config/tmux/agents.conf` | tab dots, hooks, visual bell |
+| `~/.config/tmux/scripts/agent-status.sh` | clears stale blocked states when panes become visible |
+| `~/.config/tmux/scripts/agent-statusline.sh` | keeps the self-heal heartbeat in `status-right` |
+
+---
+
+## Troubleshooting
+
+### I installed it, but nothing changes
+
+Check that you restarted the agent process after installing the adapter. Most
+agents load plugins/extensions only on startup.
+
+### tmux dots do not appear
+
+Reload tmux config:
+
+```sh
+tmux source-file ~/.config/tmux/tmux.conf
+```
+
+Then confirm your config sources the generated file:
+
+```sh
+grep agents.conf ~/.config/tmux/tmux.conf ~/.tmux.conf 2>/dev/null
+```
+
+### Zellij pane title does not change
+
+Confirm the agent is running inside Zellij and has a pane id:
+
+```sh
+echo "$ZELLIJ_PANE_ID"
+zellij action rename-pane --pane-id "$ZELLIJ_PANE_ID" "test"
+zellij action undo-rename-pane --pane-id "$ZELLIJ_PANE_ID"
+```
+
+### Claude or Codex hooks do not fire
+
+Re-run the installer for that agent and inspect the hook file:
+
+```sh
+./install.sh --with-claude
+jq '.hooks' ~/.claude/settings.json
+
+./install.sh --with-codex
+jq '.hooks' ~/.codex/hooks.json
+```
+
+### I use Herdr
+
+Set `HERDR_ENV=1`. All adapters exit early and let Herdr own the integration.
 
 ---
 
@@ -134,8 +223,34 @@ nothing breaks.
 ./uninstall.sh
 ```
 
-Removes the core, the source line, and the opencode/pi adapter files. Claude/Codex
-hooks are stripped **by name** — anything else you configured stays untouched.
+This removes:
+
+- the neutral core scripts;
+- tmux `agents.conf` and generated tmux scripts;
+- the tmux source line from `~/.config/tmux/tmux.conf` or `~/.tmux.conf`;
+- opencode/pi adapter files;
+- Claude/Codex hooks added by this project.
+
+Other hooks and user configuration are preserved.
+
+---
+
+## Development notes
+
+Run quick checks before opening a PR:
+
+```sh
+bash -n install.sh uninstall.sh scripts/*.sh tmux/scripts/*.sh
+node --check adapters/opencode/gentle-agent-state.js
+```
+
+A useful smoke test is installing into a temporary home:
+
+```sh
+tmp="$(mktemp -d)"
+HOME="$tmp" ./install.sh
+HOME="$tmp" ./uninstall.sh
+```
 
 ---
 

@@ -2,13 +2,13 @@
 # hook-adapter — shared adapter for claude-code-style hook systems (claude, codex).
 # The hook registration passes the event name as $1; the hook's JSON payload comes
 # on stdin (carries tool_name for tool events). We map both to the canonical
-# vocabulary and forward to the normalization core.
+# vocabulary and forward to the neutral multiplexer dispatcher.
 #
 # usage (from a hook command): bash hook-adapter.sh <EventName>
 set -uo pipefail
 
 event="${1:-}"
-pane="${TMUX_PANE:-}"
+pane="${TMUX_PANE:-${ZELLIJ_PANE_ID:-}}"
 input="$(cat 2>/dev/null || true)"   # capture the hook's JSON stdin
 
 [ -n "$pane" ] && [ -n "$event" ] || exit 0
@@ -28,7 +28,9 @@ msg=""
 case "$event" in
   PreToolUse|PostToolUse)
     tool="$(printf '%s' "$input" | python3 -c 'import sys,json
-try: print(json.load(sys.stdin).get("tool_name","") or json.load(sys.stdin).get("toolName",""))
+try:
+    data=json.load(sys.stdin)
+    print(data.get("tool_name","") or data.get("toolName","") or "")
 except Exception: print("")' 2>/dev/null)"
     ;;
   Notification)
@@ -58,7 +60,4 @@ case "$event" in
   *) exit 0 ;;   # SubagentStop and unknown events: ignore
 esac
 
-if [ -x "$HOME/.config/agent-state/scripts/agent-report.sh" ]; then
-  exec bash "$HOME/.config/agent-state/scripts/agent-report.sh" "$pane" "$state" "$msg"
-fi
-exec bash "$HOME/.config/tmux/scripts/agent-report.sh" "$pane" "$state" "$msg"
+exec bash "$HOME/.config/agent-state/scripts/agent-report.sh" "$pane" "$state" "$msg"

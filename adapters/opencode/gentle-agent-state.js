@@ -1,22 +1,22 @@
-// tmux-agent-state — opencode adapter for the tmux agent-state notifier.
+// gentle-agent-state — opencode adapter for the agent-state notifier.
 // Translates opencode's native events into the canonical vocabulary and forwards
-// them to the single normalization core (~/.config/tmux/scripts/agent-report.sh).
+// them to the neutral multiplexer core (~/.config/agent-state/scripts/agent-report.sh).
 //
-// Active only when running inside a tmux pane (and NOT under herdr).
+// Active only when running inside a tmux/Zellij pane (and NOT under herdr).
 
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const REPORT = join(homedir(), ".config", "tmux", "scripts", "agent-report.sh");
+const REPORT = join(homedir(), ".config", "agent-state", "scripts", "agent-report.sh");
 
 function enabled() {
-  // tmux sets TMUX_PANE per pane. If we're under herdr, let herdr's plugin own it.
-  return Boolean(process.env.TMUX_PANE) && process.env.HERDR_ENV !== "1";
+  // tmux sets TMUX_PANE; Zellij sets ZELLIJ_PANE_ID. If we're under herdr, let herdr's plugin own it.
+  return Boolean(process.env.TMUX_PANE ?? process.env.ZELLIJ_PANE_ID) && process.env.HERDR_ENV !== "1";
 }
 
 function report(state, message) {
-  const pane = process.env.TMUX_PANE;
+  const pane = process.env.TMUX_PANE ?? process.env.ZELLIJ_PANE_ID;
   if (!pane) return Promise.resolve();
   return new Promise((resolve) => {
     const child = spawn("bash", [REPORT, pane, state, message ?? ""], {

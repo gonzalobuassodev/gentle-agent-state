@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
-# install.sh — tmux agent-state notifier installer.
+# install.sh — agent-state notifier installer.
 #
-# Installs the tmux display layer + normalization core, and (opt-in) the per-agent
-# adapters. Each adapter is installed ONLY when you ask for it, so this never touches
-# the config of a tool you don't use.
+# Installs the neutral normalization core, the tmux display layer when tmux is
+# available, and (opt-in) the per-agent adapters. Each adapter is installed ONLY
+# when you ask for it, so this never touches the config of a tool you don't use.
 #
-#   ./install.sh                         core only (tmux display + scripts)
+#   ./install.sh                         core only (tmux display if available)
 #   ./install.sh --with-opencode         core + opencode adapter
 #   ./install.sh --with-pi --with-claude core + pi + claude adapters
 #   ./install.sh --all                   core + every adapter whose tool is detected
 #
+# Multiplexers: tmux and Zellij (auto-detected at runtime)
 # Adapters: --with-opencode  --with-pi  --with-claude  --with-codex
 set -euo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+AGENT_STATE_DIR="$HOME/.config/agent-state/scripts"
 TMUX_DIR="$HOME/.config/tmux"
 SCRIPTS_DIR="$TMUX_DIR/scripts"
 
@@ -35,56 +37,71 @@ say() { printf '%s\n' "$*"; }
 
 # --- dependency check ---
 missing=""
-command -v tmux    >/dev/null 2>&1 || missing="$missing tmux"
 command -v jq      >/dev/null 2>&1 || missing="$missing jq"
 command -v python3 >/dev/null 2>&1 || missing="$missing python3"
+if ! command -v tmux >/dev/null 2>&1 && ! command -v zellij >/dev/null 2>&1; then
+  missing="$missing tmux-or-zellij"
+fi
 if [ -n "$missing" ]; then
   say "❌ missing required tools:$missing"
   say "   install them and re-run. (jq + python3 power the claude/codex hook adapters)"
   exit 1
 fi
 
-# --- core: scripts + display layer ---
-say "🔧 installing tmux agent-state core..."
-mkdir -p "$SCRIPTS_DIR"
-cp -f "$SRC/tmux/scripts/"*.sh "$SCRIPTS_DIR/"
-chmod +x "$SCRIPTS_DIR/"*.sh
-cp -f "$SRC/tmux/agents.conf" "$TMUX_DIR/agents.conf"
-say "  ⚙️  scripts + agents.conf installed to $TMUX_DIR"
+# --- core: neutral dispatcher + multiplexer backends ---
+say "🔧 installing agent-state core..."
+mkdir -p "$AGENT_STATE_DIR"
+cp -f "$SRC/scripts/"*.sh "$AGENT_STATE_DIR/"
+chmod +x "$AGENT_STATE_DIR/"*.sh
+say "  ⚙️  neutral scripts installed to $AGENT_STATE_DIR"
+
+# --- tmux display layer (when tmux is available) ---
+if command -v tmux >/dev/null 2>&1; then
+  mkdir -p "$SCRIPTS_DIR"
+  cp -f "$SRC/tmux/scripts/"*.sh "$SCRIPTS_DIR/"
+  chmod +x "$SCRIPTS_DIR/"*.sh
+  cp -f "$SRC/tmux/agents.conf" "$TMUX_DIR/agents.conf"
+  say "  ⚙️  tmux scripts + agents.conf installed to $TMUX_DIR"
+else
+  say "  ⏭️  tmux not found — installed Zellij-capable neutral core only"
+fi
 
 # --- ensure the tmux config sources agents.conf (idempotent, at end of file) ---
-# Prefer ~/.config/tmux/tmux.conf, fall back to ~/.tmux.conf.
-TMUX_CONF="$TMUX_DIR/tmux.conf"
-[ -f "$TMUX_CONF" ] || { [ -f "$HOME/.tmux.conf" ] && TMUX_CONF="$HOME/.tmux.conf"; }
-[ -f "$TMUX_CONF" ] || TMUX_CONF="$TMUX_DIR/tmux.conf"   # create the modern path if neither exists
+if command -v tmux >/dev/null 2>&1; then
+  # Prefer ~/.config/tmux/tmux.conf, fall back to ~/.tmux.conf.
+  TMUX_CONF="$TMUX_DIR/tmux.conf"
+  [ -f "$TMUX_CONF" ] || { [ -f "$HOME/.tmux.conf" ] && TMUX_CONF="$HOME/.tmux.conf"; }
+  [ -f "$TMUX_CONF" ] || TMUX_CONF="$TMUX_DIR/tmux.conf"   # create the modern path if neither exists
 
-SOURCE_LINE="if-shell '[ -f ~/.config/tmux/agents.conf ]' 'source-file ~/.config/tmux/agents.conf'"
-if [ -f "$TMUX_CONF" ] && grep -qF 'agents.conf' "$TMUX_CONF"; then
-  say "  ✅ $TMUX_CONF already sources agents.conf"
-else
-  mkdir -p "$(dirname "$TMUX_CONF")"
-  {
-    printf '\n# tmux agent-state notifier — sourced last so the per-tab dot extends the theme\n'
-    printf '%s\n' "$SOURCE_LINE"
-  } >> "$TMUX_CONF"
-  say "  ➕ appended source line to $TMUX_CONF"
+  SOURCE_LINE="if-shell '[ -f ~/.config/tmux/agents.conf ]' 'source-file ~/.config/tmux/agents.conf'"
+  if [ -f "$TMUX_CONF" ] && grep -qF 'agents.conf' "$TMUX_CONF"; then
+    say "  ✅ $TMUX_CONF already sources agents.conf"
+  else
+    mkdir -p "$(dirname "$TMUX_CONF")"
+    {
+      printf '\n# tmux agent-state notifier — sourced last so the per-tab dot extends the theme\n'
+      printf '%s\n' "$SOURCE_LINE"
+    } >> "$TMUX_CONF"
+    say "  ➕ appended source line to $TMUX_CONF"
+  fi
 fi
 
 # --- adapters (opt-in) ---
 install_opencode() {
   local dst="$HOME/.config/opencode/plugins"
   mkdir -p "$dst"
-  cp -f "$SRC/adapters/opencode/tmux-agent-state.js" "$dst/"
+  cp -f "$SRC/adapters/opencode/gentle-agent-state.js" "$dst/"
   say "  🔌 opencode adapter → $dst"
 }
 install_pi() {
   local dst="$HOME/.pi/agent/extensions"
   mkdir -p "$dst"
-  cp -f "$SRC/adapters/pi/tmux-agent-state.ts" "$dst/"
+  cp -f "$SRC/adapters/pi/gentle-agent-state.ts" "$dst/"
   say "  🔌 pi adapter → $dst"
 }
 
-HOOK="bash $HOME/.config/tmux/scripts/hook-adapter.sh"
+HOOK="bash $HOME/.config/agent-state/scripts/hook-adapter.sh"
+OLD_HOOK="bash $HOME/.config/tmux/scripts/hook-adapter.sh"
 
 # merge_hooks <target.json> <Event:matcher> ...
 # APPENDS our hook (never replaces arrays), only if not already present — so it
@@ -98,10 +115,13 @@ merge_hooks() {
     ev="${pair%%:*}"; matcher="${pair#*:}"
     filter="$filter | addhook(\"$ev\"; \"$matcher\")"
   done
-  jq --arg base "$HOOK" "
+  jq --arg base "$HOOK" --arg oldbase "$OLD_HOOK" "
+    def drop_old_agent_state_hooks:
+      map(.hooks |= map(select(((.command // \"\") | startswith(\$oldbase)) | not)))
+      | map(select((.hooks | length) > 0));
     def addhook(\$ev; \$matcher):
       (\$base + \" \" + \$ev) as \$cmd
-      | .hooks[\$ev] = ((.hooks[\$ev] // [])
+      | .hooks[\$ev] = ((.hooks[\$ev] // [] | drop_old_agent_state_hooks)
         | if any(.[].hooks[]?; .command == \$cmd) then .
           else . + [{matcher: \$matcher, hooks: [{type: \"command\", command: \$cmd, timeout: 5}]}] end);
     $filter
@@ -148,4 +168,8 @@ if [ "$want_opencode$want_pi$want_claude$want_codex$want_all" = "00000" ]; then
 fi
 
 say ""
-say "🎉 done. Open a fresh tmux (or: tmux source-file $TMUX_CONF) and restart your agents."
+if [ -n "${TMUX_CONF:-}" ]; then
+  say "🎉 done. Open a fresh tmux (or: tmux source-file $TMUX_CONF) and restart your agents."
+else
+  say "🎉 done. Restart your agents inside Zellij. Pane titles will show agent state."
+fi
