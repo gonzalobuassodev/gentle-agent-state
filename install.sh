@@ -90,12 +90,14 @@ fi
 install_opencode() {
   local dst="$HOME/.config/opencode/plugins"
   mkdir -p "$dst"
+  rm -f "$dst/tmux-agent-state.js"
   cp -f "$SRC/adapters/opencode/gentle-agent-state.js" "$dst/"
   say "  🔌 opencode adapter → $dst"
 }
 install_pi() {
   local dst="$HOME/.pi/agent/extensions"
   mkdir -p "$dst"
+  rm -f "$dst/tmux-agent-state.ts"
   cp -f "$SRC/adapters/pi/gentle-agent-state.ts" "$dst/"
   say "  🔌 pi adapter → $dst"
 }

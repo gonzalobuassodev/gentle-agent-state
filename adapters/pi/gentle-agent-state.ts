@@ -19,6 +19,20 @@ function report(state) {
   child.on("error", () => {});
 }
 
+function toolName(ev) {
+  return String(ev?.toolName ?? ev?.name ?? ev?.tool?.name ?? "");
+}
+
+function isBlockingTool(ev) {
+  const name = toolName(ev).toLowerCase().replace(/[^a-z0-9]/g, "");
+  return (
+    name.endsWith("askuserquestion") ||
+    name.endsWith("requestuserinput") ||
+    name.endsWith("exitplanmode") ||
+    name.includes("confirm")
+  );
+}
+
 export default function (pi) {
   if (!enabled) return;
 
@@ -46,20 +60,22 @@ export default function (pi) {
     idleTimer.unref?.();
   });
 
-  // blocked = pi is waiting on the user. pi has NO native permission/question
-  // event, but asking the user is implemented as a TOOL (ask_user_question).
-  // So: that tool's execution start = waiting on you; its end = answered.
-  const BLOCKING_TOOLS = new Set(["ask_user_question"]);
-
-  pi.on?.("tool_execution_start", (ev) => {
-    if (BLOCKING_TOOLS.has(ev?.toolName)) {
+  // blocked = pi is waiting on the user. Pi user prompts are surfaced through
+  // tools/events rather than a dedicated lifecycle event. Match normalized tool
+  // names so namespaced forms like `functions.ask_user_question` work too.
+  const markBlockedIfNeeded = (ev) => {
+    if (isBlockingTool(ev)) {
       clearIdle();
       report("blocked");
     }
-  });
+  };
+
+  pi.on?.("tool_call", markBlockedIfNeeded);
+
+  pi.on?.("tool_execution_start", markBlockedIfNeeded);
 
   pi.on?.("tool_execution_end", (ev) => {
-    if (BLOCKING_TOOLS.has(ev?.toolName)) {
+    if (isBlockingTool(ev)) {
       report("working"); // answer received, agent keeps going
     }
   });
