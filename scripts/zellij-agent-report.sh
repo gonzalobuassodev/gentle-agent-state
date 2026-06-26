@@ -15,6 +15,16 @@ state="${2:-}"
 case "$state" in working | blocked | idle | unknown) ;; *) exit 0 ;; esac
 command -v zellij >/dev/null 2>&1 || exit 0
 
+# Zellij accepts bare numeric pane ids, but plugin and terminal ids can collide
+# (eg. terminal_2 and plugin_2). Agent panes are terminal panes, so target the
+# explicit terminal namespace for native rename/restore actions.
+pane_action_id="$pane"
+case "$pane" in
+terminal_* | plugin_*) ;;
+*[!0-9]*) ;;
+*) pane_action_id="terminal_$pane" ;;
+esac
+
 session="${ZELLIJ_SESSION_NAME:-default}"
 state_dir="${XDG_RUNTIME_DIR:-/tmp}/agent-state-zellij"
 mkdir -p "$state_dir" 2>/dev/null || true
@@ -121,11 +131,11 @@ notify_sound() {
 }
 
 rename_pane() {
-	zellij action rename-pane --pane-id "$pane" "$1" >/dev/null 2>&1 || true
+	zellij action rename-pane --pane-id "$pane_action_id" "$1" >/dev/null 2>&1 || true
 }
 
 restore_pane() {
-	zellij action undo-rename-pane --pane-id "$pane" >/dev/null 2>&1 || true
+	zellij action undo-rename-pane --pane-id "$pane_action_id" >/dev/null 2>&1 || true
 }
 
 tab_original_file=""
