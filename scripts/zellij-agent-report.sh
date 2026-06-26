@@ -29,6 +29,10 @@ session="${ZELLIJ_SESSION_NAME:-default}"
 state_dir="${XDG_RUNTIME_DIR:-/tmp}/agent-state-zellij"
 mkdir -p "$state_dir" 2>/dev/null || true
 
+# Keep user-managed tab names stable by default. Pane titles still show the
+# exact agent state; tab-title rollup remains available as an explicit opt-in.
+rename_tabs="${AGENT_ZELLIJ_RENAME_TAB:-0}"
+
 safe_id() { printf '%s' "$1" | tr -c '[:alnum:]_.-' '_'; }
 
 pane_key="$(safe_id "$session")_pane_$(safe_id "$pane")"
@@ -158,6 +162,7 @@ remember_tab_name() {
 }
 
 rename_tab() {
+	[ "$rename_tabs" = "1" ] || return 0
 	[ -n "$tab_id" ] || return 0
 	remember_tab_name
 	original=""
@@ -177,6 +182,10 @@ restore_tab() {
 	fi
 	if [ -z "$original" ]; then
 		original="$(clean_tab_name "$tab_name")"
+	fi
+	if [ "$rename_tabs" != "1" ] && [ "$tab_name" = "$original" ]; then
+		rm -f "$tab_original_file" 2>/dev/null || true
+		return 0
 	fi
 	if [ -n "$original" ]; then
 		zellij action rename-tab --tab-id "$tab_id" "$original" >/dev/null 2>&1 || true
