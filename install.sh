@@ -5,7 +5,7 @@
 # available, and (opt-in) the per-agent adapters. Each adapter is installed ONLY
 # when you ask for it, so this never touches the config of a tool you don't use.
 #
-#   ./install.sh                         core only (tmux display if available)
+#   ./install.sh                         core + Zellij backend (tmux display if available)
 #   ./install.sh --with-opencode         core + opencode adapter
 #   ./install.sh --with-pi --with-claude core + pi + claude adapters
 #   ./install.sh --all                   core + every adapter whose tool is detected
@@ -54,6 +54,9 @@ mkdir -p "$AGENT_STATE_DIR"
 cp -f "$SRC/scripts/"*.sh "$AGENT_STATE_DIR/"
 chmod +x "$AGENT_STATE_DIR/"*.sh
 say "  ⚙️  neutral scripts installed to $AGENT_STATE_DIR"
+if command -v zellij >/dev/null 2>&1; then
+  say "  ✅ Zellij detected — backend installed; no extra Zellij config is needed"
+fi
 
 # --- tmux display layer (when tmux is available) ---
 if command -v tmux >/dev/null 2>&1; then
@@ -171,7 +174,10 @@ fi
 
 say ""
 if [ -n "${TMUX_CONF:-}" ]; then
-  say "🎉 done. Open a fresh tmux (or: tmux source-file $TMUX_CONF) and restart your agents."
+  say "🎉 done. tmux: open a fresh session or run: tmux source-file $TMUX_CONF"
+  if command -v zellij >/dev/null 2>&1; then
+    say "🎉 done. Zellij: restart your agents inside Zellij; pane/tab titles will show agent state."
+  fi
 else
-  say "🎉 done. Restart your agents inside Zellij. Pane titles will show agent state."
+  say "🎉 done. Zellij: restart your agents inside Zellij; pane/tab titles will show agent state."
 fi
