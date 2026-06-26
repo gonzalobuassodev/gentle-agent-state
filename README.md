@@ -7,7 +7,7 @@ emit lifecycle events, this project normalizes them into `working`, `blocked`, a
 `idle`, then shows the state in **tmux** or **Zellij**.
 
 - **tmux:** colored dots in the window/tab bar, rolled up from all panes.
-- **Zellij:** the agent pane title changes while the agent is busy or blocked.
+- **Zellij:** the tab title rolls up agent state; the exact agent pane title changes too.
 - **Agents:** opencode, pi, Claude Code, and Codex.
 
 ```text
@@ -47,9 +47,9 @@ Want only specific agents?
 
 | State | Meaning | tmux display | Zellij display | Alert |
 |-------|---------|--------------|----------------|-------|
-| `working` | Agent is running | 🟠 orange dot | pane title: `● agent working` | none |
-| `blocked` | Agent is waiting for you | 🔴 red dot | pane title: `● agent blocked` | sound + flash/message |
-| `idle` | Agent finished or is not running | no dot | original pane title restored | sound after busy state |
+| `working` | Agent is running | 🟠 orange dot | tab + pane title: `● agent working` | none |
+| `blocked` | Agent is waiting for you | 🔴 red dot | tab + pane title: `● agent blocked` | sound + flash/message |
+| `idle` | Agent finished or is not running | no dot | original tab + pane titles restored | sound after busy state |
 
 ### tmux behavior
 
@@ -63,8 +63,10 @@ So if any pane in a tmux window is blocked, that window turns red.
 
 ### Zellij behavior
 
-Zellij does not expose tmux-style window user options, so the first supported UI is
-pane-title based. The agent pane is renamed while active and restored on idle.
+Zellij does not expose tmux-style window user options, so the backend uses native
+renaming actions instead. The tab title shows the worst state across panes in that
+tab, and the exact agent pane title shows its own state. Original tab names are
+remembered and restored when the tab returns to idle.
 
 ---
 
@@ -189,14 +191,17 @@ Then confirm your config sources the generated file:
 grep agents.conf ~/.config/tmux/tmux.conf ~/.tmux.conf 2>/dev/null
 ```
 
-### Zellij pane title does not change
+### Zellij tab or pane title does not change
 
 Confirm the agent is running inside Zellij and has a pane id:
 
 ```sh
 echo "$ZELLIJ_PANE_ID"
-zellij action rename-pane --pane-id "$ZELLIJ_PANE_ID" "test"
+zellij action rename-pane --pane-id "$ZELLIJ_PANE_ID" "test-pane"
 zellij action undo-rename-pane --pane-id "$ZELLIJ_PANE_ID"
+zellij action current-tab-info
+zellij action rename-tab "test-tab"
+zellij action undo-rename-tab
 ```
 
 ### Claude or Codex hooks do not fire

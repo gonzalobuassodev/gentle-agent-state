@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # zellij-agent-report — Zellij backend for the agent-state notifier.
 #
-# Zellij does not expose tmux-style per-window user options. The portable display
-# surface is the pane title, so we rename the agent pane while it is working or
-# blocked and remove the custom title when it goes idle.
+# Zellij does not expose tmux-style window user options. We use the native names
+# users already see: pane titles for the exact agent pane and tab titles for the
+# tab-level rollup.
 #
 # usage: zellij-agent-report.sh <pane_id> <working|blocked|idle> [message]
 set -uo pipefail
@@ -15,14 +15,30 @@ state="${2:-}"
 case "$state" in working|blocked|idle|unknown) ;; *) exit 0 ;; esac
 command -v zellij >/dev/null 2>&1 || exit 0
 
-# State is persisted only for transition-aware sound. Pane titles are owned by
-# Zellij, so idle uses undo-rename-pane instead of storing/restoring old titles.
 session="${ZELLIJ_SESSION_NAME:-default}"
 state_dir="${XDG_RUNTIME_DIR:-/tmp}/agent-state-zellij"
 mkdir -p "$state_dir" 2>/dev/null || true
-state_file="$state_dir/${session}_${pane}.state"
+
+safe_id() { printf '%s' "$1" | tr -c '[:alnum:]_.-' '_'; }
+state_file="$state_dir/$(safe_id "$session")_pane_$(safe_id "$pane").state"
 prev="$(cat "$state_file" 2>/dev/null || true)"
 printf '%s' "$state" > "$state_file" 2>/dev/null || true
+
+pane_info_json="$(zellij action list-panes --json --tab 2>/dev/null || zellij action list-panes --json 2>/dev/null || true)"
+tab_id=""
+tab_name=""
+if [ -n "$pane_info_json" ]; then
+  tab_id="$(printf '%s' "$pane_info_json" | jq -r --arg pane "$pane" '
+    .[]
+    | select((.id | tostring) == $pane or ("terminal_" + (.id | tostring)) == $pane or ("plugin_" + (.id | tostring)) == $pane)
+    | .tab_id // empty
+  ' 2>/dev/null | head -n 1)"
+  tab_name="$(printf '%s' "$pane_info_json" | jq -r --arg pane "$pane" '
+    .[]
+    | select((.id | tostring) == $pane or ("terminal_" + (.id | tostring)) == $pane or ("plugin_" + (.id | tostring)) == $pane)
+    | .tab_name // empty
+  ' 2>/dev/null | head -n 1)"
+fi
 
 case "$(uname -s)" in
   Darwin)
@@ -44,19 +60,94 @@ play() {
   fi
 }
 
+rename_pane() {
+  zellij action rename-pane --pane-id "$pane" "$1" >/dev/null 2>&1 || true
+}
+
+restore_pane() {
+  zellij action undo-rename-pane --pane-id "$pane" >/dev/null 2>&1 || true
+}
+
+tab_original_file=""
+if [ -n "$tab_id" ]; then
+  tab_original_file="$state_dir/$(safe_id "$session")_tab_$(safe_id "$tab_id").name"
+fi
+
+remember_tab_name() {
+  [ -n "$tab_original_file" ] || return 0
+  [ -f "$tab_original_file" ] && return 0
+  case "$tab_name" in
+    "● agent working"|"● agent blocked") return 0 ;;
+  esac
+  printf '%s' "$tab_name" > "$tab_original_file" 2>/dev/null || true
+}
+
+rename_tab() {
+  [ -n "$tab_id" ] || return 0
+  remember_tab_name
+  zellij action rename-tab --tab-id "$tab_id" "$1" >/dev/null 2>&1 || true
+}
+
+restore_tab() {
+  [ -n "$tab_id" ] || return 0
+  if [ -n "$tab_original_file" ] && [ -f "$tab_original_file" ]; then
+    original="$(cat "$tab_original_file" 2>/dev/null || true)"
+    if [ -n "$original" ]; then
+      zellij action rename-tab --tab-id "$tab_id" "$original" >/dev/null 2>&1 || true
+    else
+      zellij action undo-rename-tab --tab-id "$tab_id" >/dev/null 2>&1 || true
+    fi
+    rm -f "$tab_original_file" 2>/dev/null || true
+  else
+    zellij action undo-rename-tab --tab-id "$tab_id" >/dev/null 2>&1 || true
+  fi
+}
+
+rollup_tab_state() {
+  [ -n "$tab_id" ] && [ -n "$pane_info_json" ] || { printf '%s' "$state"; return; }
+
+  worst="idle"
+  while IFS= read -r pane_id; do
+    [ -n "$pane_id" ] || continue
+    pane_state_file="$state_dir/$(safe_id "$session")_pane_$(safe_id "$pane_id").state"
+    pane_state="$(cat "$pane_state_file" 2>/dev/null || true)"
+    case "$pane_state" in
+      blocked) worst="blocked"; break ;;
+      working) [ "$worst" = "idle" ] && worst="working" ;;
+    esac
+  done < <(printf '%s' "$pane_info_json" | jq -r --arg tab_id "$tab_id" '
+    .[] | select((.tab_id | tostring) == $tab_id) | .id
+  ' 2>/dev/null)
+
+  printf '%s' "$worst"
+}
+
+apply_tab_rollup() {
+  rollup="$(rollup_tab_state)"
+  case "$rollup" in
+    blocked) rename_tab "● agent blocked" ;;
+    working) rename_tab "● agent working" ;;
+    idle|unknown|*) restore_tab ;;
+  esac
+}
+
 case "$state" in
   blocked)
-    zellij action rename-pane --pane-id "$pane" "● agent blocked" >/dev/null 2>&1 || true
+    rename_pane "● agent blocked"
+    apply_tab_rollup
     [ "$state" != "$prev" ] && play "$SOUND_BLOCKED"
     ;;
   working)
-    zellij action rename-pane --pane-id "$pane" "● agent working" >/dev/null 2>&1 || true
+    rename_pane "● agent working"
+    apply_tab_rollup
     ;;
   idle)
-    zellij action undo-rename-pane --pane-id "$pane" >/dev/null 2>&1 || true
+    restore_pane
+    apply_tab_rollup
     case "$prev" in working|blocked) play "$SOUND_IDLE" ;; esac
     ;;
   unknown)
-    zellij action undo-rename-pane --pane-id "$pane" >/dev/null 2>&1 || true
+    restore_pane
+    apply_tab_rollup
     ;;
 esac
