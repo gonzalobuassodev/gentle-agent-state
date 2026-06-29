@@ -145,7 +145,7 @@ rename_pane() {
 
 restore_pane() {
 	case "$pane_title" in
-	"● agent working" | "● agent blocked")
+	"● working" | "● blocked" | "● agent working" | "● agent blocked")
 		zellij action undo-rename-pane --pane-id "$pane_action_id" >/dev/null 2>&1 || true
 		;;
 	esac
@@ -157,7 +157,7 @@ if [ -n "$tab_id" ]; then
 fi
 
 clean_tab_name() {
-	printf '%s' "$1" | sed -E 's/[[:space:]]*● agent (working|blocked)$//'
+	printf '%s' "$1" | sed -E 's/[[:space:]]*● (agent )?(working|blocked)$//'
 }
 
 remember_tab_name() {
@@ -247,22 +247,22 @@ apply_tab_rollup() {
 	fi
 
 	case "$rollup" in
-	blocked) rename_tab "● agent blocked" ;;
-	working) rename_tab "● agent working" ;;
+	blocked) rename_tab "● blocked" ;;
+	working) rename_tab "● working" ;;
 	idle | unknown | *) restore_tab ;;
 	esac
 }
 
 case "$state" in
 blocked)
-	rename_pane "● agent blocked"
+	rename_pane "● blocked"
 	apply_tab_rollup
 	if [ "$state" != "$prev" ]; then
 		notify_sound "$SOUND_BLOCKED"
 	fi
 	;;
 working)
-	rename_pane "● agent working"
+	rename_pane "● working"
 	apply_tab_rollup
 	;;
 idle)
