@@ -65,6 +65,7 @@ pane_filter='
 
 tab_id=""
 tab_name=""
+pane_title=""
 focused="0"
 if [ -n "$pane_info_json" ]; then
 	tab_id="$(printf '%s' "$pane_info_json" | jq -r --arg pane "$pane" "
@@ -72,6 +73,9 @@ if [ -n "$pane_info_json" ]; then
   " 2>/dev/null | head -n 1)"
 	tab_name="$(printf '%s' "$pane_info_json" | jq -r --arg pane "$pane" "
     .[] | $pane_filter | .tab_name // empty
+  " 2>/dev/null | head -n 1)"
+	pane_title="$(printf '%s' "$pane_info_json" | jq -r --arg pane "$pane" "
+    .[] | $pane_filter | .title // empty
   " 2>/dev/null | head -n 1)"
 	focused="$(printf '%s' "$pane_info_json" | jq -r --arg pane "$pane" "
     .[] | $pane_filter
@@ -135,11 +139,16 @@ notify_sound() {
 }
 
 rename_pane() {
+	[ "$pane_title" = "$1" ] && return 0
 	zellij action rename-pane --pane-id "$pane_action_id" "$1" >/dev/null 2>&1 || true
 }
 
 restore_pane() {
-	zellij action undo-rename-pane --pane-id "$pane_action_id" >/dev/null 2>&1 || true
+	case "$pane_title" in
+	"● agent working" | "● agent blocked")
+		zellij action undo-rename-pane --pane-id "$pane_action_id" >/dev/null 2>&1 || true
+		;;
+	esac
 }
 
 tab_original_file=""
@@ -168,10 +177,12 @@ rename_tab() {
 	original=""
 	[ -n "$tab_original_file" ] && original="$(cat "$tab_original_file" 2>/dev/null || true)"
 	if [ -n "$original" ]; then
-		zellij action rename-tab --tab-id "$tab_id" "$original $1" >/dev/null 2>&1 || true
+		desired="$original $1"
 	else
-		zellij action rename-tab --tab-id "$tab_id" "$1" >/dev/null 2>&1 || true
+		desired="$1"
 	fi
+	[ "$tab_name" = "$desired" ] && return 0
+	zellij action rename-tab --tab-id "$tab_id" "$desired" >/dev/null 2>&1 || true
 }
 
 restore_tab() {
@@ -229,6 +240,12 @@ rollup_tab_state() {
 
 apply_tab_rollup() {
 	rollup="$(rollup_tab_state)"
+	rollup_file=""
+	if [ -n "$tab_id" ]; then
+		rollup_file="$state_dir/$(safe_id "$session")_tab_$(safe_id "$tab_id").state"
+		printf '%s' "$rollup" >"$rollup_file" 2>/dev/null || true
+	fi
+
 	case "$rollup" in
 	blocked) rename_tab "● agent blocked" ;;
 	working) rename_tab "● agent working" ;;
