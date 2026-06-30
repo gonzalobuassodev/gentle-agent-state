@@ -82,7 +82,7 @@ if command -v tmux >/dev/null 2>&1; then
   else
     mkdir -p "$(dirname "$TMUX_CONF")"
     {
-      printf '\n# tmux agent-state notifier — sourced last so the per-tab dot extends the theme\n'
+      printf '\n# tmux agent-state notifier — sourced last so the per-tab state marker extends the theme\n'
       printf '%s\n' "$SOURCE_LINE"
     } >> "$TMUX_CONF"
     say "  ➕ appended source line to $TMUX_CONF"

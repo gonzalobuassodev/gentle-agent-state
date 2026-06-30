@@ -6,14 +6,13 @@ gentle-agent-state connects AI coding agents to your terminal multiplexer. Agent
 emit lifecycle events, this project normalizes them into `working`, `blocked`, and
 `idle`, then shows the state in **tmux** or **Zellij**.
 
-- **tmux:** colored dots in the window/tab bar, rolled up from all panes.
+- **tmux:** colored state markers in the window/tab bar, rolled up from all panes.
 - **Zellij:** the tab title rolls up agent state; the exact agent pane title changes too.
 - **Agents:** opencode, pi, Claude Code, and Codex.
 
 ```text
-  ● 1 api      ● 2 claude      3 notes
-  └ working    └ blocked       └ idle
-  (orange)     (red, beeps)    (no dot)
+  1 api ●      2 claude x      3 notes
+  (orange)    (red, beeps)    (idle)
 ```
 
 ---
@@ -47,19 +46,19 @@ Want only specific agents?
 
 | State | Meaning | tmux display | Zellij display | Alert |
 |-------|---------|--------------|----------------|-------|
-| `working` | Agent is running | 🟠 orange dot | pane title: `● agent working` | none |
-| `blocked` | Agent is waiting for you | 🔴 red dot | pane title: `● agent blocked` | sound + flash/message |
-| `idle` | Agent finished or is not running | no dot | pane title restored | sound after busy state |
+| `working` | Agent is running | `●` in orange | pane title: `●` | none |
+| `blocked` | Agent is waiting for you | `x` in red | pane title: `x` | sound + flash/message |
+| `idle` | Agent finished or is not running | no marker | pane title restored | sound after busy state |
 
 ### tmux behavior
 
-The window dot shows the **worst state across panes**:
+The window state marker shows the **worst state across panes**:
 
 ```text
 blocked > working > idle
 ```
 
-So if any pane in a tmux window is blocked, that window turns red.
+So if any pane in a tmux window is blocked, that window shows `x` in red.
 
 ### Zellij behavior
 
@@ -120,7 +119,7 @@ No sound player? Nothing breaks; alerts just become visual/state-only.
 
 ### tmux colors
 
-tmux dot colors live in `tmux/agents.conf`:
+tmux state marker colors live in `tmux/agents.conf`:
 
 | State | Color |
 |-------|-------|
@@ -167,7 +166,7 @@ not changes to every multiplexer backend.
 
 | Path | Purpose |
 |------|---------|
-| `~/.config/tmux/agents.conf` | tab dots, hooks, visual bell |
+| `~/.config/tmux/agents.conf` | tab state markers, hooks, visual bell |
 | `~/.config/tmux/scripts/agent-status.sh` | clears stale blocked states when panes become visible |
 | `~/.config/tmux/scripts/agent-statusline.sh` | keeps the self-heal heartbeat in `status-right` |
 
@@ -180,7 +179,7 @@ not changes to every multiplexer backend.
 Check that you restarted the agent process after installing the adapter. Most
 agents load plugins/extensions only on startup.
 
-### tmux dots do not appear
+### tmux state markers do not appear
 
 Reload tmux config:
 

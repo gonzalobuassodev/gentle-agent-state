@@ -2,7 +2,7 @@
 # agent-status — self-heal heartbeat (runs every status-interval, prints NOTHING).
 #
 # It lives in status-right only so tmux re-runs it on each refresh; the agent
-# informativo is shown by the per-tab dots (window-status-format), so this script
+# state cue is shown by the per-tab state marker (window-status-format), so this script
 # stays visually silent and the theme keeps the status-right (RAM/CPU/git).
 #
 # Self-heal: clears "blocked" on any pane in the window the user is CURRENTLY
@@ -39,5 +39,5 @@ while IFS=$'\t' read -r pid st vis wid; do
 # (tmux IFS tab-splitting merges consecutive tabs).
 done < <(tmux list-panes -a -F '#{pane_id}'$'\t''#{?#{@agent_state},#{@agent_state},-}'$'\t''#{&&:#{window_active},#{session_attached}}'$'\t''#{window_id}' 2>/dev/null)
 
-# No output: the per-tab dots are the informativo; the theme keeps the status-right.
+# No output: the per-tab state marker is the state cue; the theme keeps the status-right.
 exit 0
