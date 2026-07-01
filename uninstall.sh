@@ -15,6 +15,7 @@ rm -f "$HOME/.config/agent-state/scripts/agent-report.sh" \
       "$HOME/.config/agent-state/scripts/hook-adapter.sh" \
       "$HOME/.config/agent-state/scripts/tmux-agent-report.sh" \
       "$HOME/.config/agent-state/scripts/zellij-agent-report.sh" \
+      "$HOME/.config/agent-state/scripts/ghostty-agent-report.sh" \
       "$HOME/.config/tmux/scripts/agent-report.sh" \
       "$HOME/.config/tmux/scripts/agent-status.sh" \
       "$HOME/.config/tmux/scripts/hook-adapter.sh" \
@@ -59,4 +60,4 @@ strip_hooks "$HOME/.claude/settings.json"
 strip_hooks "$HOME/.codex/hooks.json"
 
 say ""
-say "✅ uninstalled. Restart tmux/Zellij + your agents to fully clear state."
+say "✅ uninstalled. Restart tmux/Zellij/Ghostty + your agents to fully clear state."

@@ -10,7 +10,7 @@
 #   ./install.sh --with-pi --with-claude core + pi + claude adapters
 #   ./install.sh --all                   core + every adapter whose tool is detected
 #
-# Multiplexers: tmux and Zellij (auto-detected at runtime)
+# Backends: tmux, Zellij, and native Ghostty (auto-detected at runtime)
 # Adapters: --with-opencode  --with-pi  --with-claude  --with-codex
 set -euo pipefail
 
@@ -39,8 +39,8 @@ say() { printf '%s\n' "$*"; }
 missing=""
 command -v jq      >/dev/null 2>&1 || missing="$missing jq"
 command -v python3 >/dev/null 2>&1 || missing="$missing python3"
-if ! command -v tmux >/dev/null 2>&1 && ! command -v zellij >/dev/null 2>&1; then
-  missing="$missing tmux-or-zellij"
+if ! command -v tmux >/dev/null 2>&1 && ! command -v zellij >/dev/null 2>&1 && [ "${TERM_PROGRAM:-}" != "ghostty" ] && ! command -v ghostty >/dev/null 2>&1; then
+  missing="$missing tmux-zellij-or-ghostty"
 fi
 if [ -n "$missing" ]; then
   say "❌ missing required tools:$missing"
@@ -48,7 +48,7 @@ if [ -n "$missing" ]; then
   exit 1
 fi
 
-# --- core: neutral dispatcher + multiplexer backends ---
+# --- core: neutral dispatcher + terminal backends ---
 say "🔧 installing agent-state core..."
 mkdir -p "$AGENT_STATE_DIR"
 cp -f "$SRC/scripts/"*.sh "$AGENT_STATE_DIR/"
@@ -56,6 +56,9 @@ chmod +x "$AGENT_STATE_DIR/"*.sh
 say "  ⚙️  neutral scripts installed to $AGENT_STATE_DIR"
 if command -v zellij >/dev/null 2>&1; then
   say "  ✅ Zellij detected — backend installed; no extra Zellij config is needed"
+fi
+if [ "${TERM_PROGRAM:-}" = "ghostty" ] || command -v ghostty >/dev/null 2>&1; then
+  say "  ✅ Ghostty detected — native title backend installed"
 fi
 
 # --- tmux display layer (when tmux is available) ---
@@ -66,7 +69,7 @@ if command -v tmux >/dev/null 2>&1; then
   cp -f "$SRC/tmux/agents.conf" "$TMUX_DIR/agents.conf"
   say "  ⚙️  tmux scripts + agents.conf installed to $TMUX_DIR"
 else
-  say "  ⏭️  tmux not found — installed Zellij-capable neutral core only"
+  say "  ⏭️  tmux not found — installed neutral core for Zellij/Ghostty when available"
 fi
 
 # --- ensure the tmux config sources agents.conf (idempotent, at end of file) ---
@@ -179,5 +182,8 @@ if [ -n "${TMUX_CONF:-}" ]; then
     say "🎉 done. Zellij: restart your agents inside Zellij; pane/tab titles will show agent state."
   fi
 else
-  say "🎉 done. Zellij: restart your agents inside Zellij; pane/tab titles will show agent state."
+  say "🎉 done. Zellij/Ghostty: restart your agents inside the terminal; titles will show agent state."
+fi
+if [ "${TERM_PROGRAM:-}" = "ghostty" ] || command -v ghostty >/dev/null 2>&1; then
+  say "🎉 done. Ghostty: restart your agents inside Ghostty; the window title will show agent state."
 fi

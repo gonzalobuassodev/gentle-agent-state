@@ -9,6 +9,9 @@ set -uo pipefail
 
 event="${1:-}"
 pane="${TMUX_PANE:-${ZELLIJ_PANE_ID:-}}"
+if [ -z "$pane" ] && [ "${TERM_PROGRAM:-}" = "ghostty" ]; then
+  pane="ghostty"
+fi
 input="$(cat 2>/dev/null || true)"   # capture the hook's JSON stdin
 
 [ -n "$pane" ] && [ -n "$event" ] || exit 0

@@ -2,7 +2,7 @@
 // Translates pi's native lifecycle events into the canonical vocabulary and
 // forwards them to the neutral multiplexer core (~/.config/agent-state/scripts/agent-report.sh).
 //
-// Active only inside a tmux/Zellij pane (and NOT under herdr/subagent children).
+// Active only inside tmux, Zellij, or native Ghostty (and NOT under herdr/subagent children).
 // @ts-nocheck
 
 import { spawn } from "node:child_process";
@@ -10,7 +10,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 const REPORT = join(homedir(), ".config", "agent-state", "scripts", "agent-report.sh");
-const pane = process.env.TMUX_PANE ?? process.env.ZELLIJ_PANE_ID;
+const pane = process.env.TMUX_PANE ?? process.env.ZELLIJ_PANE_ID ?? (process.env.TERM_PROGRAM === "ghostty" ? "ghostty" : undefined);
 const enabled = Boolean(pane) && process.env.HERDR_ENV !== "1" && process.env.PI_SUBAGENT_CHILD !== "1";
 
 function report(state) {

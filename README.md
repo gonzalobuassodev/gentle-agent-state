@@ -2,12 +2,13 @@
 
 **See when an AI agent needs you without hunting through panes.**
 
-gentle-agent-state connects AI coding agents to your terminal multiplexer. Agents
+gentle-agent-state connects AI coding agents to your terminal session. Agents
 emit lifecycle events, this project normalizes them into `working`, `blocked`, and
-`idle`, then shows the state in **tmux** or **Zellij**.
+`idle`, then shows the state in **tmux**, **Zellij**, or native **Ghostty**.
 
 - **tmux:** colored state markers in the window/tab bar, rolled up from all panes.
-- **Zellij:** the tab title rolls up agent state; the exact agent pane title changes too.
+- **Zellij:** the tab title can roll up agent state; the exact agent pane title changes too.
+- **Ghostty:** the native window/tab title shows the latest agent state.
 - **Agents:** opencode, pi, Claude Code, and Codex.
 
 ```text
@@ -25,7 +26,7 @@ cd gentle-agent-state
 ./install.sh --all
 ```
 
-Then restart your agents inside tmux or Zellij.
+Then restart your agents inside tmux, Zellij, or Ghostty.
 
 For tmux, either open a fresh tmux session or reload your config:
 
@@ -44,11 +45,11 @@ Want only specific agents?
 
 ## What you get
 
-| State | Meaning | tmux display | Zellij display | Alert |
-|-------|---------|--------------|----------------|-------|
-| `working` | Agent is running | `o` in orange | pane title: `o` | none |
-| `blocked` | Agent is waiting for you | `x` in red | pane title: `x` | sound + flash/message |
-| `idle` | Agent finished or is not running | no marker | pane title restored | sound after busy state |
+| State | Meaning | tmux display | Zellij display | Ghostty display | Alert |
+|-------|---------|--------------|----------------|-----------------|-------|
+| `working` | Agent is running | `o` in orange | pane title: `o` | title: `agent: working` | none |
+| `blocked` | Agent is waiting for you | `x` in red | pane title: `x` | title: `agent: blocked` | sound + flash/message in tmux/Zellij |
+| `idle` | Agent finished or is not running | no marker | pane title restored | title: `agent: idle` | sound after busy state in tmux/Zellij |
 
 ### tmux behavior
 
@@ -69,6 +70,14 @@ user-managed tab names exactly; the exact agent pane title shows its own state.
 If you prefer tab-title rollup, opt in with `AGENT_ZELLIJ_RENAME_TAB=1`. In that
 mode the tab title appends the worst state across panes in that tab, and the
 backend best-effort restores the original tab name when the tab returns to idle.
+
+### Ghostty behavior
+
+Native Ghostty support uses `TERM_PROGRAM=ghostty` and updates the terminal title
+with OSC escape sequences. Ghostty does not expose tmux/Zellij-style pane rollup
+to these shell hooks, so this backend intentionally shows only the latest state
+for the current terminal session. If you run tmux or Zellij inside Ghostty, the
+tmux/Zellij backend still takes precedence.
 
 ---
 
@@ -98,7 +107,7 @@ Required:
 - `bash`
 - `jq`
 - `python3`
-- either `tmux` or `zellij`
+- at least one display backend: `tmux`, `zellij`, or Ghostty
 
 Optional sound players:
 
@@ -138,8 +147,8 @@ the edge with thin adapters:
 ```text
 opencode ┐
 pi       ├──▶  agent-report.sh  ──▶  tmux backend
-Claude   │                       └─▶  Zellij backend
-Codex    ┘
+Claude   │                       ├─▶  Zellij backend
+Codex    ┘                       └─▶  Ghostty title backend
 ```
 
 The core vocabulary is deliberately small:
@@ -160,6 +169,7 @@ not changes to every multiplexer backend.
 | `~/.config/agent-state/scripts/agent-report.sh` | neutral dispatcher |
 | `~/.config/agent-state/scripts/tmux-agent-report.sh` | tmux backend |
 | `~/.config/agent-state/scripts/zellij-agent-report.sh` | Zellij backend |
+| `~/.config/agent-state/scripts/ghostty-agent-report.sh` | Ghostty title backend |
 | `~/.config/agent-state/scripts/hook-adapter.sh` | Claude/Codex hook adapter |
 
 ### tmux-specific files
@@ -206,6 +216,18 @@ zellij action rename-tab "test-tab"
 zellij action undo-rename-tab
 ```
 
+### Ghostty title does not change
+
+Confirm the agent is running directly inside Ghostty:
+
+```sh
+echo "$TERM_PROGRAM"
+printf '\033]2;ghostty-title-test\007'
+```
+
+If you are running tmux or Zellij inside Ghostty, troubleshoot that backend
+instead; tmux/Zellij take precedence over the native Ghostty title backend.
+
 ### Claude or Codex hooks do not fire
 
 Re-run the installer for that agent and inspect the hook file:
@@ -232,7 +254,7 @@ Set `HERDR_ENV=1`. All adapters exit early and let Herdr own the integration.
 
 This removes:
 
-- the neutral core scripts;
+- the neutral core scripts, including tmux/Zellij/Ghostty backends;
 - tmux `agents.conf` and generated tmux scripts;
 - the tmux source line from `~/.config/tmux/tmux.conf` or `~/.tmux.conf`;
 - opencode/pi adapter files;
@@ -249,6 +271,7 @@ Run quick checks before opening a PR:
 ```sh
 bash -n install.sh uninstall.sh scripts/*.sh tmux/scripts/*.sh
 node --check adapters/opencode/gentle-agent-state.js
+bash tests/ghostty-contract.sh
 ```
 
 A useful smoke test is installing into a temporary home:
