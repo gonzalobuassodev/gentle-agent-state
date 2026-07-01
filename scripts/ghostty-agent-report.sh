@@ -48,6 +48,7 @@ tty_id="$(tty 2>/dev/null || true)"
 [ "$tty_id" = "not a tty" ] && tty_id=""
 state_key="${AGENT_GHOSTTY_STATE_KEY:-${tty_id:-${pane}_${PPID}}}"
 state_file="$state_dir/$(safe_id "$state_key").state"
+title_file="$state_dir/$(safe_id "$state_key").title"
 prev="$(cat "$state_file" 2>/dev/null || true)"
 printf '%s' "$state" >"$state_file" 2>/dev/null || true
 
@@ -65,10 +66,70 @@ if [ "$state" != "$prev" ]; then
 fi
 
 case "$state" in
-blocked) title="agent: blocked${msg:+ — $msg}" ;;
-working) title="agent: working" ;;
-idle) title="agent: idle" ;;
-unknown) title="agent: unknown" ;;
+blocked) marker="x" ;;
+working) marker="o" ;;
+idle) marker="" ;;
+unknown) marker="?" ;;
+esac
+
+clean_title_name() {
+	printf '%s' "$1" | sed -E 's/[[:space:]]+(o|x|\?)$//'
+}
+
+query_title() {
+	if [ -n "${AGENT_GHOSTTY_CURRENT_TITLE:-}" ]; then
+		printf '%s' "$AGENT_GHOSTTY_CURRENT_TITLE"
+		return 0
+	fi
+	[ -r /dev/tty ] && [ -w /dev/tty ] || return 0
+	# XTerm window-title query: CSI 21 t. Supporting terminals respond with
+	# OSC l <title> ST. Ghostty support can vary, so this is best-effort only.
+	{ exec 9<>/dev/tty; } 2>/dev/null || return 0
+	old_stty="$(stty -g <&9 2>/dev/null || true)"
+	[ -n "$old_stty" ] && stty raw -echo min 0 time 2 <&9 2>/dev/null || true
+	printf '\033[21t' >&9 2>/dev/null || true
+	IFS= read -r -t 0.2 response <&9 2>/dev/null || response=""
+	[ -n "$old_stty" ] && stty "$old_stty" <&9 2>/dev/null || true
+	exec 9>&- 9<&- 2>/dev/null || true
+	case "$response" in
+	$'\033]l'*)
+		response="${response#$'\033]l'}"
+		response="${response%$'\033\\'}"
+		printf '%s' "$response"
+		;;
+	esac
+}
+
+remember_title() {
+	base_title="${AGENT_GHOSTTY_TITLE_BASE:-}"
+	if [ -z "$base_title" ] && [ -f "$title_file" ]; then
+		base_title="$(cat "$title_file" 2>/dev/null || true)"
+	fi
+	if [ -z "$base_title" ]; then
+		base_title="$(query_title)"
+		# Only remove a suffix when recovering from our own prior busy state without
+		# a cached original title. Fresh titles like "release x" must be preserved.
+		case "$prev" in
+		working | blocked) base_title="$(clean_title_name "$base_title")" ;;
+		esac
+	fi
+	if [ -n "$base_title" ]; then
+		printf '%s' "$base_title" >"$title_file" 2>/dev/null || true
+	fi
+	printf '%s' "$base_title"
+}
+
+base_title="$(remember_title)"
+if [ -n "$base_title" ] && [ -n "$marker" ]; then
+	title="$base_title $marker"
+elif [ -n "$base_title" ]; then
+	title="$base_title"
+else
+	title="$marker"
+fi
+
+case "$state" in
+idle | unknown) rm -f "$title_file" 2>/dev/null || true ;;
 esac
 
 # Keep notification text from injecting nested terminal control sequences.

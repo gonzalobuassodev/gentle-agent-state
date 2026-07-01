@@ -47,9 +47,9 @@ Want only specific agents?
 
 | State | Meaning | tmux display | Zellij display | Ghostty display | Alert |
 |-------|---------|--------------|----------------|-----------------|-------|
-| `working` | Agent is running | `o` in orange | pane title: `o` | title: `agent: working` | none |
-| `blocked` | Agent is waiting for you | `x` in red | pane title: `x` | title: `agent: blocked` | sound + flash/message in tmux/Zellij, sound in Ghostty |
-| `idle` | Agent finished or is not running | no marker | pane title restored | title: `agent: idle` | sound after busy state |
+| `working` | Agent is running | `o` in orange | pane title: `o` | title marker: `o` | none |
+| `blocked` | Agent is waiting for you | `x` in red | pane title: `x` | title marker: `x` | sound + flash/message in tmux/Zellij, sound in Ghostty |
+| `idle` | Agent finished or is not running | no marker | pane title restored | marker removed | sound after busy state |
 
 ### tmux behavior
 
@@ -77,10 +77,23 @@ Native Ghostty support uses `TERM_PROGRAM=ghostty`, updates the terminal title
 with OSC escape sequences, and plays the same best-effort transition sounds as
 other backends: blocked sound when the state becomes `blocked`, and idle sound
 when `working` returns to `idle`. A direct `blocked` → `idle` transition stays
-quiet to avoid double-playing blocked and success sounds for prompts. Ghostty does not expose tmux/Zellij-style pane rollup
-to these shell hooks, so this backend intentionally shows only the latest state
-for the current terminal session. If you run tmux or Zellij inside Ghostty, the
-tmux/Zellij backend still takes precedence.
+quiet to avoid double-playing blocked and success sounds for prompts.
+
+Ghostty's OSC title sequence sets the whole title; it does not expose the same
+tab metadata API that Zellij does. The backend therefore tries to query and cache
+the current terminal title, then appends only the state marker: `o` for working,
+`x` for blocked, and no marker for idle. If title querying is unavailable in your
+environment, set a stable base title with `AGENT_GHOSTTY_TITLE_BASE`, for example:
+
+```sh
+export AGENT_GHOSTTY_TITLE_BASE="my-project"
+```
+
+That produces `my-project o`, `my-project x`, and restores `my-project` on idle.
+If Ghostty can report the current title, no base variable is needed: an existing
+`my-project` title becomes `my-project o` or `my-project x` and is restored on
+idle. If you run tmux or Zellij inside Ghostty, the tmux/Zellij backend still
+takes precedence.
 
 ---
 

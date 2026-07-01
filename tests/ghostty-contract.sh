@@ -32,14 +32,20 @@ wait_for_log() {
   fail "$label: expected log line $(printf %q "$expected")"
 }
 
-printf '1..15\n'
+printf '1..20\n'
 
 # Keep shell syntax coverage deterministic and dependency-free.
 bash -n install.sh uninstall.sh scripts/*.sh tmux/scripts/*.sh tests/*.sh
 printf 'ok - shell syntax\n'
 
-osc_blocked=$'\033]2;agent: blocked\007'
-osc_idle=$'\033]2;agent: idle\007'
+osc_blocked=$'\033]2;x\007'
+osc_working=$'\033]2;o\007'
+osc_idle=$'\033]2;\007'
+osc_base_blocked=$'\033]2;project x\007'
+osc_base_idle=$'\033]2;project\007'
+osc_existing_working=$'\033]2;existing-tab o\007'
+osc_existing_blocked=$'\033]2;existing-tab x\007'
+osc_literal_x_working=$'\033]2;release x o\007'
 
 ghostty_env=(env -i HOME="$HOME" PATH="$PATH" TERM_PROGRAM=ghostty AGENT_GHOSTTY_FORCE_STDOUT=1)
 
@@ -48,6 +54,25 @@ assert_eq "$osc_blocked" "$actual" "Ghostty dispatcher emits blocked title"
 
 actual="$(${ghostty_env[@]} bash scripts/agent-report.sh ghostty idle)"
 assert_eq "$osc_idle" "$actual" "Ghostty dispatcher emits idle title"
+
+actual="$(env -i HOME="$HOME" PATH="$PATH" TERM_PROGRAM=ghostty AGENT_GHOSTTY_FORCE_STDOUT=1 AGENT_GHOSTTY_TITLE_BASE=project bash scripts/agent-report.sh ghostty blocked)"
+assert_eq "$osc_base_blocked" "$actual" "Ghostty appends blocked marker to configured title"
+
+actual="$(env -i HOME="$HOME" PATH="$PATH" TERM_PROGRAM=ghostty AGENT_GHOSTTY_FORCE_STDOUT=1 AGENT_GHOSTTY_TITLE_BASE=project bash scripts/agent-report.sh ghostty idle)"
+assert_eq "$osc_base_idle" "$actual" "Ghostty idle restores configured title"
+
+existing_runtime="$(mktemp -d)"
+actual="$(env -i HOME="$HOME" PATH="$PATH" TERM_PROGRAM=ghostty AGENT_GHOSTTY_FORCE_STDOUT=1 XDG_RUNTIME_DIR="$existing_runtime" AGENT_GHOSTTY_STATE_KEY=existing AGENT_GHOSTTY_CURRENT_TITLE=existing-tab bash scripts/agent-report.sh ghostty working)"
+assert_eq "$osc_existing_working" "$actual" "Ghostty appends working marker to existing title"
+
+actual="$(env -i HOME="$HOME" PATH="$PATH" TERM_PROGRAM=ghostty AGENT_GHOSTTY_FORCE_STDOUT=1 XDG_RUNTIME_DIR="$existing_runtime" AGENT_GHOSTTY_STATE_KEY=existing AGENT_GHOSTTY_CURRENT_TITLE="existing-tab o" bash scripts/agent-report.sh ghostty blocked)"
+assert_eq "$osc_existing_blocked" "$actual" "Ghostty swaps existing title marker without accumulating"
+rm -rf "$existing_runtime"
+
+literal_runtime="$(mktemp -d)"
+actual="$(env -i HOME="$HOME" PATH="$PATH" TERM_PROGRAM=ghostty AGENT_GHOSTTY_FORCE_STDOUT=1 XDG_RUNTIME_DIR="$literal_runtime" AGENT_GHOSTTY_STATE_KEY=literal AGENT_GHOSTTY_CURRENT_TITLE="release x" bash scripts/agent-report.sh ghostty working)"
+assert_eq "$osc_literal_x_working" "$actual" "Ghostty preserves fresh titles ending in marker text"
+rm -rf "$literal_runtime"
 
 tmp_home="$(mktemp -d)"
 cleanup() { rm -rf "$tmp_home" "${install_home:-}" "${adapter_home:-}"; }
