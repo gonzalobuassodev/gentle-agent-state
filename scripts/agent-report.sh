@@ -16,6 +16,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 case "$state" in working|blocked|idle|unknown) ;; *) exit 0 ;; esac
 
+# user hooks: executable scripts in ~/.config/agent-state/hooks/
+# Each hook receives the canonical state and optional message as arguments.
+hooks_dir="${HOME}/.config/agent-state/hooks"
+if [ -d "$hooks_dir" ]; then
+  for hook in "$hooks_dir"/*; do
+    [ -x "$hook" ] || continue
+    bash "$hook" "$state" "$msg" &
+  done
+fi
+
 if [ -n "${TMUX_PANE:-}" ] || [[ "$pane" == %* ]]; then
   if command -v tmux >/dev/null 2>&1; then
     exec bash "$SCRIPT_DIR/tmux-agent-report.sh" "$pane" "$state" "$msg"

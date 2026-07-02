@@ -38,17 +38,10 @@ function report(state, message) {
 function stateFromSessionStatus(status) {
   if (typeof status !== "string") return undefined;
   switch (status.toLowerCase()) {
-    case "idle":
-      return "idle";
-    case "active":
-    case "busy":
-    case "pending":
-    case "running":
-    case "streaming":
-    case "working":
-      return "working";
-    default:
-      return undefined;
+    case "idle": return "idle";
+    case "active": case "busy": case "pending":
+    case "running": case "streaming": case "working": return "working";
+    default: return undefined;
   }
 }
 
@@ -69,30 +62,21 @@ export const TmuxAgentStatePlugin = async () => {
           if (state) await report(state);
           break;
         }
-        case "tool.execute.before":
-        case "tool.execute.after":
-        case "permission.replied":
-        case "question.replied":
-        case "question.rejected":
-        case "session.compacted":
+        case "tool.execute.before": case "tool.execute.after":
+        case "permission.replied": case "question.replied":
+        case "question.rejected": case "session.compacted":
           await report("working");
           break;
-        case "permission.asked":
-        case "question.asked":
+        case "permission.asked": case "question.asked":
           await report("blocked");
           break;
-        // session.error fires for recoverable errors too (e.g. editing a file
-        // before reading it) that the agent retries and works through. It is NOT
-        // "waiting on the user", so we ignore it — real lifecycle events
-        // (session.idle / permission.asked) drive the state instead.
         case "session.idle":
           await report("idle");
           break;
         case "session.deleted":
           await report("idle");
           break;
-        default:
-          break;
+        default: break;
       }
     },
   };
